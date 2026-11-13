@@ -23,10 +23,17 @@ from . import pages, scanner, store  # noqa: E402
 
 PAYPAL_ME = os.environ.get("PAYPAL_ME", "pinggu80")
 PRICE = os.environ.get("PRICE_USD", "29")
+AGENTPROOF_URL = os.environ.get("AGENTPROOF_URL", pages.AGENTPROOF_URL)
+
 # A Payment Link (paypal.com/ncp/payment/...) is a real hosted checkout with
-# buyer protection; paypal.me is a peer-to-peer transfer. Both work, so the app
-# takes whichever one is configured.
-PAYPAL_LINK = os.environ.get("PAYPAL_LINK") or f"https://www.paypal.me/{PAYPAL_ME}/{PRICE}USD"
+# buyer protection; paypal.me is a peer-to-peer transfer. Both work, so each
+# tier takes whichever one is configured for it.
+AUDIT_LINK = (
+    os.environ.get("PAYPAL_LINK_29")
+    or os.environ.get("PAYPAL_LINK")
+    or f"https://www.paypal.me/{PAYPAL_ME}/{PRICE}USD"
+)
+TEAM_LINK = os.environ.get("PAYPAL_LINK_99") or f"https://www.paypal.me/{PAYPAL_ME}/99USD"
 RATE_LIMIT = int(os.environ.get("RATE_LIMIT", "6"))
 RATE_WINDOW = 3600
 BADGE_TTL = 6 * 3600
@@ -119,7 +126,12 @@ def report_page(request: Request, report_id: str):
 
 @app.get("/pricing", response_class=HTMLResponse)
 def pricing() -> str:
-    return pages.pricing_page(paypal_link=PAYPAL_LINK, price=PRICE)
+    return pages.pricing_page(
+        audit_link=AUDIT_LINK,
+        team_link=TEAM_LINK,
+        price=PRICE,
+        agentproof_url=AGENTPROOF_URL,
+    )
 
 
 @app.post("/order")

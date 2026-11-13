@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from html import escape
 
+# One engine, two brands: this site is the developer front door; the compliance
+# product it feeds sits at agentproof.cloud.
+AGENTPROOF_URL = "https://agentproof-cloud-production.up.railway.app/"
+
 CSS = """
 :root{
   --bg:#0b0e14; --panel:#11161f; --line:#1f2634; --fg:#e6edf3; --muted:#8b949e;
@@ -77,12 +81,13 @@ footer{border-top:1px solid var(--line);padding:32px 0 60px;color:var(--dim);fon
 """
 
 
-def layout(title: str, body: str, *, description: str = "") -> str:
+def layout(title: str, body: str, *, description: str = "", agentproof_url: str = "") -> str:
     desc = description or (
         "Launch Guard scans a repository for the three failure modes AI-written code ships with: "
         "credentials that end up public, model calls in loops with no exit, and permission prompts "
         "that got switched off."
     )
+    enterprise = agentproof_url or AGENTPROOF_URL
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -109,7 +114,8 @@ def layout(title: str, body: str, *, description: str = "") -> str:
 {body}
 <footer>
   <div>Launch Guard \u2014 static analysis, no upload, no telemetry.</div>
-  <div><a href="/pricing">$29 audit</a> \u00b7 <a href="https://github.com/yepinggu66/launchguard">source</a></div>
+  <div><a href="/pricing">Pricing</a> \u00b7 <a href="https://github.com/yepinggu66/launchguard">Source</a> \u00b7
+    <a href="{escape(enterprise)}">Enterprise compliance</a></div>
 </footer>
 </div>
 </body>
@@ -240,7 +246,7 @@ def report_page(report: dict, *, share_url: str) -> str:
     return layout(f"Launch Guard \u2014 {grade} \u00b7 {report['risk_score']}/100", body)
 
 
-def pricing_page(*, paypal_link: str, price: str) -> str:
+def pricing_page(*, audit_link: str, team_link: str, price: str, agentproof_url: str = AGENTPROOF_URL) -> str:
     body = f"""
 <div class="eyebrow">Pricing</div>
 <h1>Free to scan.<br>Pay for the review.</h1>
@@ -253,19 +259,28 @@ actually matter.</p>
     <div class="k">Free</div>
     <h3>$0 \u00b7 self-serve</h3>
     <p>Scan any public repo on this site. Run the GitHub Action on unlimited repos.
-    Badge for your README.</p>
+    Badge for your README. No signup, no card.</p>
   </div>
   <div class="card" style="border-color:#2ea043">
     <div class="k">Audit</div>
-    <h3>$29 \u00b7 one repo</h3>
+    <h3>${escape(price)} \u00b7 one repo</h3>
     <p>I run the scan, verify every finding against your source by hand, drop the false positives,
     and send a fix PR. 24h turnaround.</p>
+    <p style="margin-top:14px"><a href="{escape(audit_link)}" target="_blank" rel="noopener">Pay ${escape(price)} \u2192</a></p>
   </div>
   <div class="card">
     <div class="k">Team</div>
     <h3>$99 \u00b7 up to 5 repos</h3>
     <p>Same review across a monorepo or several services, plus a
     <code>policy.yaml</code> generated from what you actually use.</p>
+    <p style="margin-top:14px"><a href="{escape(team_link)}" target="_blank" rel="noopener">Pay $99 \u2192</a></p>
+  </div>
+  <div class="card">
+    <div class="k">Enterprise</div>
+    <h3>AgentProof \u00b7 compliance</h3>
+    <p>Signed pre-execution receipts, hash chain, offline verification \u2014 for the buyer who has
+    to prove what an agent did after an incident.</p>
+    <p style="margin-top:14px"><a href="{escape(agentproof_url)}" target="_blank" rel="noopener">agentproof.cloud \u2192</a></p>
   </div>
 </section>
 
@@ -275,8 +290,10 @@ actually matter.</p>
   After paying, put the repository URL and the PayPal transaction id in the form and you will get
   the review by email within 24 hours.</p>
   <div class="pay" style="margin-bottom:26px">
-    <a class="pp" target="_blank" rel="noopener" href="{escape(paypal_link)}">Pay ${escape(price)} with PayPal</a>
-    <span class="tag">opens PayPal \u00b7 amount pre-filled \u00b7 USD</span>
+    <a class="pp" target="_blank" rel="noopener" href="{escape(audit_link)}">Pay ${escape(price)} with PayPal</a>
+    <a class="pp" target="_blank" rel="noopener" href="{escape(team_link)}"
+       style="background:#111;color:#ffc439;border:1px solid #ffc439">Pay $99 (team)</a>
+    <span class="tag">amount pre-filled \u00b7 USD \u00b7 buyer protection</span>
   </div>
 
   <form method="post" action="/order" style="display:grid;gap:12px;max-width:560px">
@@ -290,7 +307,7 @@ actually matter.</p>
   </form>
 </section>
 """
-    return layout("Pricing \u2014 Launch Guard", body)
+    return layout("Pricing \u2014 Launch Guard", body, agentproof_url=agentproof_url)
 
 
 def thanks_page(*, order_id: str, repo: str) -> str:

@@ -109,6 +109,8 @@ Reports are stored in SQLite (`DATA_DIR`). On Railway that directory is ephemera
 
 Free for public repositories and unlimited CI runs. $29 for a human to confirm every finding on one repo against the source and send a fix PR — [pricing](https://launchguard-production-e3a01252.up.railway.app/pricing).
 
+One engine, two brands: this repository is the developer front door. If you need to prove what an agent did *after* an incident — signed receipts, hash chain, offline verification — that is [AgentProof.cloud](https://agentproof-cloud-production.up.railway.app/).
+
 ## License
 
 MIT
