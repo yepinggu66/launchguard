@@ -100,7 +100,12 @@ def scan_github(owner: str, repo: str) -> dict:
         files = _extract(data, Path(tmp))
         if files == 0:
             raise ScanError("No scannable source files found in that repository.")
-        report = scan_repo(tmp)
+        # GitHub tarballs wrap everything in `repo-sha/`; scanning from the root
+        # would put that prefix in every reported path.
+        root = Path(tmp)
+        tops = [child for child in root.iterdir() if child.is_dir()]
+        target = tops[0] if len(tops) == 1 else root
+        report = scan_repo(target)
     payload = report.to_dict()
     payload["target"] = f"{owner}/{repo}"
     return payload
