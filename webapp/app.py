@@ -323,9 +323,13 @@ async def paypal_ipn(request: Request):
         return Response("duplicate", status_code=200)
 
     order_id = "PP-" + txn[-8:].upper()
+    # The button's "custom message box" lands in `memo`; a hosted button can also
+    # carry `custom`. Either one is the buyer telling us which repo to review,
+    # which is the only thing PayPal cannot know on its own.
+    repo = (get("memo") or get("custom") or get("item_name") or "paypal button").strip()[:200]
     store.save_order(
         order_id,
-        get("item_name") or "paypal button",
+        repo,
         get("payer_email") or "unknown",
         txn,
         status="paid",
@@ -333,7 +337,7 @@ async def paypal_ipn(request: Request):
     _notify(
         {
             "order_id": order_id,
-            "repo": get("item_name"),
+            "repo": repo,
             "email": get("payer_email"),
             "txn": txn,
             "gross": gross,
