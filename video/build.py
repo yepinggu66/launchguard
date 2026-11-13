@@ -404,12 +404,18 @@ def scene_cta(draw, t, dur, img):
     rounded(draw, [M, 470, M + bw, 470 + bh], 14, fill=(15, 22, 33), outline=GREEN, width=2)
     draw.text((M + 34, 470 + bh // 2), SITE, font=mono(34), fill=FG, anchor="lm")
 
+    if t > 0.8:  # the thing being advertised is actually running
+        dot_x = M + bw - 96
+        draw.ellipse([dot_x, 470 + bh // 2 - 16, dot_x + 12, 470 + bh // 2 - 4], fill=GREEN)
+        draw.text((dot_x + 20, 470 + bh // 2), "live", font=mono(22), fill=GREEN, anchor="lm")
+
     rounded(draw, [M, 600, M + 360, 600 + 72], 12, fill=GREEN_D)
     draw.text((M + 180, 600 + 36), "$29 human audit", font=sans(30, bold=True), fill=(4, 20, 10), anchor="mm")
     draw.text((M + 400, 636), REPO, font=mono(26), fill=MUTED, anchor="lm")
-    draw.text((M, 700), "no signup  ·  no card  ·  free for public repos", font=mono(22), fill=DIM)
+    draw.text((M, 706), "Card or PayPal  ·  human review  ·  fix PR within 24h", font=sans(26), fill=FG)
+    draw.text((M, 744), "Free scanning for public repos  ·  no signup", font=sans(24), fill=DIM)
 
-    draw.text((M, 760), "Static analysis. Nothing leaves your runner. No telemetry.",
+    draw.text((M, 800), "Static analysis. Nothing leaves your runner. No telemetry.",
               font=sans(28), fill=DIM)
 
 
