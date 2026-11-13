@@ -123,6 +123,7 @@ def _notify(order: dict) -> None:
 
 @app.get("/", response_class=HTMLResponse)
 def home() -> str:
+    store.bump("views")
     return pages.home()
 
 
@@ -146,6 +147,7 @@ def scan_submit(request: Request, repo: str = Form(...)):
 
     report_id = secrets.token_urlsafe(7)
     store.save_report(report_id, f"{owner}/{name}", payload)
+    store.bump("scans")
     return RedirectResponse(f"/r/{report_id}", status_code=303)
 
 
@@ -249,7 +251,7 @@ def admin_set_status(order_id: str, key: str = Form(""), status: str = Form("del
 
 @app.get("/healthz")
 def healthz() -> JSONResponse:
-    return JSONResponse({"ok": True, **store.stats()})
+    return JSONResponse({"ok": True, **store.stats(), "counters": store.counters()})
 
 
 # --------------------------------------------------------------------------- api
@@ -274,6 +276,7 @@ def api_scan(request: Request, body: dict):
 def store_and_return(payload: dict, source: str) -> JSONResponse:
     report_id = secrets.token_urlsafe(7)
     store.save_report(report_id, source, payload)
+    store.bump("scans")
     return JSONResponse({"id": report_id, "report": payload})
 
 

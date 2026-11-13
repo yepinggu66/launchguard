@@ -43,7 +43,30 @@ def init() -> None:
                    status TEXT NOT NULL DEFAULT 'new'
                )"""
         )
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS counters (
+                   name TEXT PRIMARY KEY,
+                   value INTEGER NOT NULL DEFAULT 0
+               )"""
+        )
         conn.commit()
+
+
+def bump(name: str, n: int = 1) -> None:
+    """A funnel needs three numbers: visits, scans, orders. Nothing else."""
+    with _lock, _connect() as conn:
+        conn.execute(
+            "INSERT INTO counters (name, value) VALUES (?, ?) "
+            "ON CONFLICT(name) DO UPDATE SET value = value + ?",
+            (name, n, n),
+        )
+        conn.commit()
+
+
+def counters() -> dict[str, int]:
+    with _connect() as conn:
+        rows = conn.execute("SELECT name, value FROM counters").fetchall()
+    return {row["name"]: int(row["value"]) for row in rows}
 
 
 def save_report(report_id: str, source: str, payload: dict[str, Any]) -> None:
