@@ -323,10 +323,16 @@ async def paypal_ipn(request: Request):
         return Response("duplicate", status_code=200)
 
     order_id = "PP-" + txn[-8:].upper()
-    # The button's "custom message box" lands in `memo`; a hosted button can also
-    # carry `custom`. Either one is the buyer telling us which repo to review,
-    # which is the only thing PayPal cannot know on its own.
-    repo = (get("memo") or get("custom") or get("item_name") or "paypal button").strip()[:200]
+    # Where the repository name arrives from depends on how the button was
+    # built: a custom text field sends `option_selection1`, a "note to seller"
+    # sends `memo`, and a button-level custom variable sends `custom`.
+    repo = (
+        get("option_selection1")
+        or get("memo")
+        or get("custom")
+        or get("item_name")
+        or "paypal button"
+    ).strip()[:200]
     store.save_order(
         order_id,
         repo,
