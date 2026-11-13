@@ -72,3 +72,41 @@ $29 一次性适合前 10 单，不适合做产品。两条路：
 6. 问一句："要不要我把它接进你们的 CI"
 
 第 3 步不能省。没有人工确认，$29 就只是在卖一个本来就免费的扫描器。
+
+## 7. 运行手册（部署后）
+
+**看订单**（手机也能开，建议存书签）：
+
+```
+https://launchguard-production-e3a01252.up.railway.app/admin/orders?key=<ADMIN_KEY>
+```
+
+`ADMIN_KEY` 在 Railway 变量里，也在本机 `launchguard/.admin-key.txt`。这个页面把每单标成
+`paid / delivered / refunded`，是唯一需要你每天看一次的地方。没有 key 直接 404（不是 401，
+不告诉扫描器这里有什么）。
+
+**新订单通知**：设一个 `ORDER_WEBHOOK_URL`，每来一单就往那里 POST 一段 JSON
+（`order_id / repo / email / txn / created_at`）。最省事的两个来源：
+
+- Discord：频道 → 设置 → 集成 → Webhook → 复制 URL（2 分钟，不用建应用）
+- Telegram：@BotFather 建 bot 拿 token，再调 `getUpdates` 拿 chat_id
+
+拿到 URL 后：
+
+```powershell
+railway variables --set "ORDER_WEBHOOK_URL=<url>" --skip-deploys
+railway up -d -y
+```
+
+**数据在哪**：`/data/launchguard.db`（Railway volume）。备份：
+
+```powershell
+railway volume files /data/launchguard.db
+```
+
+**轮换 admin key**：重新生成一个随机串，`railway variables --set ADMIN_KEY=...`，重启即生效。
+
+**法律页**：`/terms` 和 `/privacy` 已经上线（退款承诺写在里面：48 小时未交付全额退）。联系人默认是
+`yepinggu@outlook.com`，用 `CONTACT_EMAIL` 变量可改。
+
+**分享报告页是 noindex 的**——不要把客户仓库的问题送进搜索引擎，这是有意的。

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as _dt
 from html import escape
 
 # One engine, two brands: this site is the developer front door; the compliance
@@ -81,19 +82,28 @@ footer{border-top:1px solid var(--line);padding:32px 0 60px;color:var(--dim);fon
 """
 
 
-def layout(title: str, body: str, *, description: str = "", agentproof_url: str = "") -> str:
+def layout(
+    title: str,
+    body: str,
+    *,
+    description: str = "",
+    agentproof_url: str = "",
+    noindex: bool = False,
+) -> str:
     desc = description or (
         "Launch Guard scans a repository for the three failure modes AI-written code ships with: "
         "credentials that end up public, model calls in loops with no exit, and permission prompts "
         "that got switched off."
     )
     enterprise = agentproof_url or AGENTPROOF_URL
+    robots = '<meta name="robots" content="noindex,nofollow">' if noindex else ""
     return f"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{escape(title)}</title>
+{robots}
 <meta name="description" content="{escape(desc)}">
 <meta property="og:title" content="{escape(title)}">
 <meta property="og:description" content="{escape(desc)}">
@@ -115,6 +125,7 @@ def layout(title: str, body: str, *, description: str = "", agentproof_url: str 
 <footer>
   <div>Launch Guard \u2014 static analysis, no upload, no telemetry.</div>
   <div><a href="/pricing">Pricing</a> \u00b7 <a href="https://github.com/yepinggu66/launchguard">Source</a> \u00b7
+    <a href="/terms">Terms</a> \u00b7 <a href="/privacy">Privacy</a> \u00b7
     <a href="{escape(enterprise)}">Enterprise compliance</a></div>
 </footer>
 </div>
@@ -192,7 +203,7 @@ jobs:
     return layout("Launch Guard \u2014 the three bugs AI-written code ships with", body)
 
 
-def report_page(report: dict, *, share_url: str) -> str:
+def report_page(report: dict, *, share_url: str, noindex: bool = False) -> str:
     grade = report["grade"]
     counts = report["summary"]["by_severity"]
     findings = report["findings"]
@@ -243,7 +254,9 @@ def report_page(report: dict, *, share_url: str) -> str:
   <p style="margin-top:14px"><a class="pp" href="/pricing">$29 human audit \u2192</a></p>
 </div>
 """
-    return layout(f"Launch Guard \u2014 {grade} \u00b7 {report['risk_score']}/100", body)
+    return layout(
+        f"Launch Guard \u2014 {grade} \u00b7 {report['risk_score']}/100", body, noindex=noindex
+    )
 
 
 def pricing_page(*, audit_link: str, team_link: str, price: str, agentproof_url: str = AGENTPROOF_URL) -> str:
@@ -310,16 +323,103 @@ actually matter.</p>
     return layout("Pricing \u2014 Launch Guard", body, agentproof_url=agentproof_url)
 
 
-def thanks_page(*, order_id: str, repo: str) -> str:
+def thanks_page(*, order_id: str, repo: str, email: str = "") -> str:
+    masked = ""
+    if "@" in email:
+        name, _, domain = email.partition("@")
+        masked = f"{name[:2]}\u2026@{domain}"
+    where = f"<span class=\"mono\">{escape(masked)}</span>" if masked else "your email"
     body = f"""
 <div class="eyebrow">Order received</div>
 <h1>Thanks \u2014 order <span class="mono">{escape(order_id)}</span></h1>
-<p class="lede">I will verify the payment against PayPal and send the reviewed report for
-<span class="mono">{escape(repo)}</span> to your email within 24 hours. If you do not hear back,
-reply with the order id above.</p>
+<p class="lede">I verify the payment against PayPal, run the scan, check every finding against
+your source by hand, and send the reviewed report for
+<span class="mono">{escape(repo)}</span> to {where} within 24 hours.</p>
+<p class="hint">Keep the order id \u2014 it is how we both refer to this job. If the review has not
+arrived in 48 hours, reply with it and it is refunded, no questions.</p>
 <p><a href="/">\u2190 scan another repository</a></p>
 """
     return layout("Order received \u2014 Launch Guard", body)
+
+
+def admin_page(*, orders: list[dict], key: str) -> str:
+    rows = []
+    for order in orders:
+        when = _dt.datetime.fromtimestamp(order["created_at"], _dt.timezone.utc).strftime("%m-%d %H:%M")
+        rows.append(
+            f"<tr><td class='mono'>{escape(when)}</td>"
+            f"<td class='mono'>{escape(order['id'])}</td>"
+            f"<td>{escape(order['repo'])}</td>"
+            f"<td>{escape(order['email'])}</td>"
+            f"<td class='mono' style='font-size:12px'>{escape(order['txn'])}</td>"
+            f"<td><span class='sev'>{escape(order['status'])}</span></td>"
+            f"<td><form method='post' action='/admin/orders/{escape(order['id'])}' style='display:flex;gap:6px'>"
+            f"<input type='hidden' name='key' value='{escape(key)}'>"
+            f"<select name='status' style='background:#11161f;color:#e6edf3;border:1px solid #1f2634;"
+            f"border-radius:6px;padding:4px'>"
+            f"<option value='paid'>paid</option><option value='delivered'>delivered</option>"
+            f"<option value='refunded'>refunded</option></select>"
+            f"<button type='submit' style='padding:4px 10px;font-size:13px'>set</button></form></td></tr>"
+        )
+    if not rows:
+        rows.append("<tr><td colspan='7' style='color:var(--muted)'>No orders yet.</td></tr>")
+    pending = sum(1 for order in orders if order["status"] == "new")
+    body = f"""
+<div class="eyebrow">Admin</div>
+<h1>Orders</h1>
+<p class="lede">{len(orders)} total \u00b7 <b>{pending}</b> still marked new.
+Refresh this page after a payment; the buyer's own submission writes the row.</p>
+<table>
+<thead><tr><th>When (UTC)</th><th>Order</th><th>Repo</th><th>Email</th><th>Txn</th><th>Status</th><th></th></tr></thead>
+<tbody>{''.join(rows)}</tbody>
+</table>
+<p class="hint" style="margin-top:24px">This page is behind <code>ADMIN_KEY</code>. Rotate it in
+Railway if you ever paste this URL somewhere you do not control.</p>
+"""
+    return layout("Orders \u2014 Launch Guard", body, noindex=True)
+
+
+def terms_page(*, contact: str) -> str:
+    body = f"""
+<div class="eyebrow">Terms</div>
+<h1>Short version, in plain words.</h1>
+<p class="lede">This is a one-person service. These are the rules I will actually follow.</p>
+<h2>What you are buying</h2>
+<p class="lede">The $29 audit is a human review of one repository: I run the open-source scanner,
+open every finding against your source, remove the false positives, and send back a short list of
+what actually matters plus a fix pull request. Turnaround is 24 hours, 48 at the outside.</p>
+<h2>Refunds</h2>
+<p class="lede">If I have not delivered the review within 48 hours of your payment, you get a full
+refund on request, no questions. If I have delivered it, the work is done and the fee stands.</p>
+<h2>What I will not do</h2>
+<p class="lede">I do not audit systems I have no permission to look at. If the repository is not
+yours, the order is refunded. I do not disclose findings about your repository to anyone else.</p>
+<h2>Contact</h2>
+<p class="lede">{escape(contact)}</p>
+"""
+    return layout("Terms \u2014 Launch Guard", body)
+
+
+def privacy_page(*, contact: str) -> str:
+    body = f"""
+<div class="eyebrow">Privacy</div>
+<h1>What is stored, and what is not.</h1>
+<p class="lede">The scanner is static analysis: it reads text files and never executes the code it
+looks at. The desktop CLI never sends anything anywhere.</p>
+<h2>If you scan on this site</h2>
+<p class="lede">For a public repository I download the tarball server-side, scan it in a temporary
+directory, and store only the report (file paths, rule ids, redacted evidence). The source tree is
+deleted when the scan finishes. Report links are public and read-only, and are marked
+<code>noindex</code> so search engines do not cache them.</p>
+<h2>If you buy an audit</h2>
+<p class="lede">I store the repository name, your email and the PayPal transaction id so I can
+deliver the work and answer questions about it. That is all. I do not run analytics, I do not sell
+anything, and there is no third-party tracking script on this site.</p>
+<h2>Deleting it</h2>
+<p class="lede">Email {escape(contact)} with the order id or report link and it is deleted. No
+form, no waiting period.</p>
+"""
+    return layout("Privacy \u2014 Launch Guard", body)
 
 
 def error_page(code: int, message: str) -> str:

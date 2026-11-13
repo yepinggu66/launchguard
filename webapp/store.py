@@ -76,6 +76,23 @@ def save_order(order_id: str, repo: str, email: str, txn: str) -> None:
         conn.commit()
 
 
+def list_orders(limit: int = 100) -> list[dict[str, Any]]:
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, created_at, repo, email, txn, status FROM orders "
+            "ORDER BY created_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def set_order_status(order_id: str, status: str) -> bool:
+    with _lock, _connect() as conn:
+        cursor = conn.execute("UPDATE orders SET status = ? WHERE id = ?", (status, order_id))
+        conn.commit()
+    return cursor.rowcount > 0
+
+
 def stats() -> dict[str, int]:
     with _connect() as conn:
         reports = conn.execute("SELECT COUNT(*) AS n FROM reports").fetchone()["n"]

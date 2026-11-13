@@ -6,3 +6,4 @@ guard-out/
 video/.cache/
 video/out/*.png
 
+.admin-key.txt

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import os
 import secrets
 import sys
 import threading
 import time
+import urllib.request
 from pathlib import Path
 from urllib.parse import quote
 
@@ -34,6 +36,10 @@ AUDIT_LINK = (
     or f"https://www.paypal.me/{PAYPAL_ME}/{PRICE}USD"
 )
 TEAM_LINK = os.environ.get("PAYPAL_LINK_99") or f"https://www.paypal.me/{PAYPAL_ME}/99USD"
+
+ADMIN_KEY = os.environ.get("ADMIN_KEY", "")
+ORDER_WEBHOOK_URL = os.environ.get("ORDER_WEBHOOK_URL", "")
+CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "yepinggu@outlook.com")
 RATE_LIMIT = int(os.environ.get("RATE_LIMIT", "6"))
 RATE_WINDOW = 3600
 BADGE_TTL = 6 * 3600
@@ -84,6 +90,26 @@ class _BadgeView:
         self.blockers = [None] * blockers
 
 
+def _notify(order: dict) -> None:
+    """Tell the seller an order landed. Fire-and-forget: a webhook that is down
+    must never block the buyer's redirect."""
+    if not ORDER_WEBHOOK_URL:
+        return
+
+    def run() -> None:
+        try:
+            request = urllib.request.Request(
+                ORDER_WEBHOOK_URL,
+                data=json.dumps(order).encode("utf-8"),
+                headers={"Content-Type": "application/json", "User-Agent": "launchguard/1.0"},
+            )
+            urllib.request.urlopen(request, timeout=5).read()
+        except Exception:  # noqa: BLE001 - notification is best-effort
+            pass
+
+    threading.Thread(target=run, daemon=True).start()
+
+
 # --------------------------------------------------------------------------- pages
 
 
@@ -121,7 +147,7 @@ def report_page(request: Request, report_id: str):
     if not payload:
         return HTMLResponse(pages.error_page(404, "That report is gone."), status_code=404)
     share = f"{_base(request)}/r/{report_id}"
-    return HTMLResponse(pages.report_page(payload, share_url=share))
+    return HTMLResponse(pages.report_page(payload, share_url=share, noindex=True))
 
 
 @app.get("/pricing", response_class=HTMLResponse)
@@ -150,12 +176,55 @@ def create_order(
         return HTMLResponse(pages.error_page(400, "Paste the PayPal transaction id."), status_code=400)
     order_id = "LG-" + secrets.token_hex(3).upper()
     store.save_order(order_id, repo_value, email_value, txn_value)
-    return RedirectResponse(f"/thanks/{order_id}?repo={quote(repo_value)}", status_code=303)
+    _notify(
+        {
+            "order_id": order_id,
+            "repo": repo_value,
+            "email": email_value,
+            "txn": txn_value,
+            "created_at": int(time.time()),
+        }
+    )
+    return RedirectResponse(
+        f"/thanks/{order_id}?repo={quote(repo_value)}&email={quote(email_value)}", status_code=303
+    )
 
 
 @app.get("/thanks/{order_id}", response_class=HTMLResponse)
-def thanks(order_id: str, repo: str = "") -> str:
-    return pages.thanks_page(order_id=order_id, repo=repo or "your repository")
+def thanks(order_id: str, repo: str = "", email: str = "") -> str:
+    return pages.thanks_page(order_id=order_id, repo=repo or "your repository", email=email)
+
+
+@app.get("/terms", response_class=HTMLResponse)
+def terms() -> str:
+    return pages.terms_page(contact=CONTACT_EMAIL)
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+def privacy() -> str:
+    return pages.privacy_page(contact=CONTACT_EMAIL)
+
+
+# --------------------------------------------------------------------------- admin
+
+
+def _admin_ok(key: str) -> bool:
+    return bool(ADMIN_KEY) and secrets.compare_digest(key, ADMIN_KEY)
+
+
+@app.get("/admin/orders", response_class=HTMLResponse)
+def admin_orders(key: str = ""):
+    if not _admin_ok(key):
+        return HTMLResponse(pages.error_page(404, "Not found."), status_code=404)
+    return HTMLResponse(pages.admin_page(orders=store.list_orders(), key=key))
+
+
+@app.post("/admin/orders/{order_id}")
+def admin_set_status(order_id: str, key: str = Form(""), status: str = Form("delivered")):
+    if not _admin_ok(key):
+        return HTMLResponse(pages.error_page(404, "Not found."), status_code=404)
+    store.set_order_status(order_id, status.strip()[:20] or "delivered")
+    return RedirectResponse(f"/admin/orders?key={quote(key)}", status_code=303)
 
 
 @app.get("/healthz")
