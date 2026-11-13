@@ -240,7 +240,7 @@ def report_page(report: dict, *, share_url: str) -> str:
     return layout(f"Launch Guard \u2014 {grade} \u00b7 {report['risk_score']}/100", body)
 
 
-def pricing_page(*, paypal_me: str, price: str) -> str:
+def pricing_page(*, paypal_link: str, price: str) -> str:
     body = f"""
 <div class="eyebrow">Pricing</div>
 <h1>Free to scan.<br>Pay for the review.</h1>
@@ -275,8 +275,7 @@ actually matter.</p>
   After paying, put the repository URL and the PayPal transaction id in the form and you will get
   the review by email within 24 hours.</p>
   <div class="pay" style="margin-bottom:26px">
-    <a class="pp" target="_blank" rel="noopener"
-       href="https://www.paypal.me/{escape(paypal_me)}/{escape(price)}USD">Pay ${escape(price)} with PayPal</a>
+    <a class="pp" target="_blank" rel="noopener" href="{escape(paypal_link)}">Pay ${escape(price)} with PayPal</a>
     <span class="tag">opens PayPal \u00b7 amount pre-filled \u00b7 USD</span>
   </div>
 

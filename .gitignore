@@ -3,3 +3,6 @@
 data/
 guard-out/
 .env
+video/.cache/
+video/out/*.png
+
