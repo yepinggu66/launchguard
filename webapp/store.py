@@ -100,6 +100,21 @@ def set_order_status(order_id: str, status: str) -> bool:
     return cursor.rowcount > 0
 
 
+def claim_repo(email: str, repo: str) -> str | None:
+    """The buyer tells us which repository after paying; attach it to their
+    newest order. PayPal could never know this on its own."""
+    with _lock, _connect() as conn:
+        row = conn.execute(
+            "SELECT id FROM orders WHERE lower(email) = lower(?) ORDER BY created_at DESC LIMIT 1",
+            (email.strip(),),
+        ).fetchone()
+        if not row:
+            return None
+        conn.execute("UPDATE orders SET repo = ? WHERE id = ?", (repo.strip()[:200], row["id"]))
+        conn.commit()
+    return str(row["id"])
+
+
 def stats() -> dict[str, int]:
     with _connect() as conn:
         reports = conn.execute("SELECT COUNT(*) AS n FROM reports").fetchone()["n"]

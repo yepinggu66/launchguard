@@ -198,6 +198,18 @@ def create_order(
     )
 
 
+@app.get("/thanks", response_class=HTMLResponse)
+def thanks_root() -> str:
+    """PayPal returns here after a payment, without an order id."""
+    return pages.thanks_claim_page()
+
+
+@app.post("/thanks/claim", response_class=HTMLResponse)
+def thanks_claim(email: str = Form(...), repo: str = Form(...)):
+    order_id = store.claim_repo(email, repo)
+    return HTMLResponse(pages.thanks_claimed_page(order_id=order_id, repo=repo, email=email))
+
+
 @app.get("/thanks/{order_id}", response_class=HTMLResponse)
 def thanks(order_id: str, repo: str = "", email: str = "") -> str:
     return pages.thanks_page(order_id=order_id, repo=repo or "your repository", email=email)

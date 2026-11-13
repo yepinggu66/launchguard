@@ -342,6 +342,50 @@ arrived in 48 hours, reply with it and it is refunded, no questions.</p>
     return layout("Order received \u2014 Launch Guard", body)
 
 
+def thanks_claim_page(*, email: str = "", error: str = "") -> str:
+    err = f'<div class="err">{escape(error)}</div>' if error else ""
+    body = f"""
+<div class="eyebrow">Payment received</div>
+<h1>One thing left: which repo?</h1>
+<p class="lede">PayPal tells me that you paid. It cannot tell me what to review, so put the
+repository here and the review starts now.</p>
+{err}
+<form method="post" action="/thanks/claim" style="display:grid;gap:12px;max-width:560px">
+  <input type="email" name="email" required placeholder="the email you paid with" value="{escape(email)}"
+         style="background:var(--panel);border:1px solid var(--line);color:var(--fg);padding:14px;border-radius:10px">
+  <input type="text" name="repo" required placeholder="owner/repo  (or the full GitHub URL)"
+         style="background:var(--panel);border:1px solid var(--line);color:var(--fg);padding:14px;border-radius:10px">
+  <button type="submit">Start the review</button>
+</form>
+<p class="hint">One repository per audit. If you bought the team tier, list the first one here and
+reply to the confirmation email with the rest.</p>
+"""
+    return layout("Thanks \u2014 which repo? \u2014 Launch Guard", body, noindex=True)
+
+
+def thanks_claimed_page(*, order_id: str | None, repo: str, email: str) -> str:
+    if order_id:
+        body = f"""
+<div class="eyebrow">Got it</div>
+<h1>Review started</h1>
+<p class="lede">Order <span class="mono">{escape(order_id)}</span> is now attached to
+<span class="mono">{escape(repo)}</span>. I run the scan, check every finding against your source by
+hand, and send the reviewed report to <span class="mono">{escape(email)}</span> within 24 hours.</p>
+<p><a href="/">\u2190 scan another repository</a></p>
+"""
+        return layout("Review started \u2014 Launch Guard", body, noindex=True)
+
+    body = f"""
+<div class="eyebrow">Not matched</div>
+<h1>That email has no order yet.</h1>
+<p class="lede">Payments can take a minute to reach me. If you paid with a different email, try that
+one; if it still does not match, reply to the payment receipt and I will attach the repository by
+hand.</p>
+<p><a href="/thanks">\u2190 try again</a></p>
+"""
+    return layout("Not matched \u2014 Launch Guard", body, noindex=True)
+
+
 def admin_page(*, orders: list[dict], key: str) -> str:
     rows = []
     for order in orders:
