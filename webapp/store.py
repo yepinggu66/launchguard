@@ -67,13 +67,20 @@ def get_report_age(report_id: str) -> int:
     return int(time.time()) - int(row["created_at"]) if row else 0
 
 
-def save_order(order_id: str, repo: str, email: str, txn: str) -> None:
+def save_order(order_id: str, repo: str, email: str, txn: str, *, status: str = "new") -> None:
     with _lock, _connect() as conn:
         conn.execute(
-            "INSERT INTO orders (id, created_at, repo, email, txn) VALUES (?,?,?,?,?)",
-            (order_id, int(time.time()), repo, email, txn),
+            "INSERT INTO orders (id, created_at, repo, email, txn, status) VALUES (?,?,?,?,?,?)",
+            (order_id, int(time.time()), repo, email, txn, status),
         )
         conn.commit()
+
+
+def order_exists_txn(txn: str) -> bool:
+    """IPN retries; a duplicate must not create a second row."""
+    with _connect() as conn:
+        row = conn.execute("SELECT 1 FROM orders WHERE txn = ? LIMIT 1", (txn,)).fetchone()
+    return row is not None
 
 
 def list_orders(limit: int = 100) -> list[dict[str, Any]]:

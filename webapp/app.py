@@ -10,10 +10,11 @@ import threading
 import time
 import urllib.request
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote
 
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from starlette.concurrency import run_in_threadpool
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "guard") not in sys.path:
@@ -40,6 +41,13 @@ TEAM_LINK = os.environ.get("PAYPAL_LINK_99") or f"https://www.paypal.me/{PAYPAL_
 ADMIN_KEY = os.environ.get("ADMIN_KEY", "")
 ORDER_WEBHOOK_URL = os.environ.get("ORDER_WEBHOOK_URL", "")
 CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "yepinggu@outlook.com")
+PAYPAL_SANDBOX = os.environ.get("PAYPAL_SANDBOX", "").lower() in ("1", "true", "yes")
+PAYPAL_RECEIVER = os.environ.get("PAYPAL_RECEIVER", "").strip().lower()
+IPN_VERIFY_URL = (
+    "https://ipnpb.sandbox.paypal.com/cgi-bin/webscr"
+    if PAYPAL_SANDBOX
+    else "https://ipnpb.paypal.com/cgi-bin/webscr"
+)
 RATE_LIMIT = int(os.environ.get("RATE_LIMIT", "6"))
 RATE_WINDOW = 3600
 BADGE_TTL = 6 * 3600
@@ -255,6 +263,85 @@ def store_and_return(payload: dict, source: str) -> JSONResponse:
     report_id = secrets.token_urlsafe(7)
     store.save_report(report_id, source, payload)
     return JSONResponse({"id": report_id, "report": payload})
+
+
+# --------------------------------------------------------------------------- paypal
+
+
+def _verify_ipn(raw: bytes) -> bool:
+    """PayPal only tells the truth if you ask it back. Echo the body to the
+    verification endpoint and require the literal word VERIFIED."""
+    payload = b"cmd=_notify-validate&" + raw
+    request = urllib.request.Request(
+        IPN_VERIFY_URL,
+        data=payload,
+        headers={
+            "User-Agent": "launchguard/1.0",
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            return response.read().decode("utf-8", "replace").strip() == "VERIFIED"
+    except Exception:  # noqa: BLE001 - a network blip must not create an order
+        return False
+
+
+@app.post("/api/paypal/ipn")
+async def paypal_ipn(request: Request):
+    raw = await request.body()
+    if not raw:
+        return Response("empty", status_code=400)
+    if not await run_in_threadpool(_verify_ipn, raw):
+        return Response("invalid", status_code=400)
+
+    form = parse_qs(raw.decode("utf-8", "replace"))
+
+    def get(key: str, default: str = "") -> str:
+        return (form.get(key) or [default])[0]
+
+    if get("payment_status") != "Completed":
+        return Response("ignored", status_code=200)
+    if get("mc_currency", "USD").upper() != "USD":
+        return Response("ignored", status_code=200)
+    try:
+        gross = float(get("mc_gross") or 0)
+    except ValueError:
+        gross = 0.0
+    if gross + 0.5 < float(PRICE):
+        return Response("underpaid", status_code=200)
+    if PAYPAL_RECEIVER and PAYPAL_RECEIVER not in (
+        get("receiver_email").lower(),
+        get("business").lower(),
+    ):
+        return Response("wrong receiver", status_code=200)
+
+    txn = get("txn_id")
+    if not txn:
+        return Response("no txn", status_code=200)
+    if store.order_exists_txn(txn):
+        return Response("duplicate", status_code=200)
+
+    order_id = "PP-" + txn[-8:].upper()
+    store.save_order(
+        order_id,
+        get("item_name") or "paypal button",
+        get("payer_email") or "unknown",
+        txn,
+        status="paid",
+    )
+    _notify(
+        {
+            "order_id": order_id,
+            "repo": get("item_name"),
+            "email": get("payer_email"),
+            "txn": txn,
+            "gross": gross,
+            "source": "paypal-ipn",
+            "created_at": int(time.time()),
+        }
+    )
+    return Response("ok", status_code=200)
 
 
 @app.get("/badge/{owner}/{repo}.svg")
