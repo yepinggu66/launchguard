@@ -1,0 +1,98 @@
+name: "Launch Guard"
+description: "Block PRs that ship hardcoded credentials, unbounded model loops, or wildcard agent permissions. Comments once, updates in place."
+author: "agentproof"
+branding:
+  icon: "shield"
+  color: "green"
+
+inputs:
+  path:
+    description: "Directory to scan, relative to the repository root."
+    required: false
+    default: "."
+  fail-on:
+    description: "Lowest severity that fails the check: none | critical | high | medium"
+    required: false
+    default: "critical"
+  comment:
+    description: "Post or update one guard comment on the pull request."
+    required: false
+    default: "true"
+  badge-path:
+    description: "Where to write the grade badge SVG. Leave empty to skip."
+    required: false
+    default: "agentproof-guard.svg"
+  github-token:
+    description: "Token used to write the PR comment (needs pull-requests: write)."
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  grade:
+    description: "A to F."
+    value: ${{ steps.scan.outputs.grade }}
+  risk_score:
+    description: "0 (clean) to 100 (critical exposure)."
+    value: ${{ steps.scan.outputs.risk_score }}
+  blockers:
+    description: "Critical + high findings."
+    value: ${{ steps.scan.outputs.blockers }}
+  findings:
+    description: "Total findings."
+    value: ${{ steps.scan.outputs.findings }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: scan
+      shell: bash
+      env:
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_BADGE: ${{ inputs.badge-path }}
+        PYTHONPATH: ${{ github.action_path }}
+      run: |
+        set -uo pipefail
+        PY=python3
+        command -v python3 >/dev/null 2>&1 || PY=python
+        COMMENT="${RUNNER_TEMP}/guard-comment.md"
+        args=(scan "$INPUT_PATH" --fail-on none --comment "$COMMENT")
+        if [ -n "${INPUT_BADGE:-}" ]; then
+          args+=(--badge "$INPUT_BADGE")
+        fi
+        "$PY" -m guard.cli "${args[@]}"
+        status=$?
+        if [ -f "$COMMENT" ] && [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+          cat "$COMMENT" >> "$GITHUB_STEP_SUMMARY"
+        fi
+        exit $status
+
+    - id: comment
+      if: inputs.comment == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        PYTHONPATH: ${{ github.action_path }}
+        GUARD_COMMENT_PATH: ${{ runner.temp }}/guard-comment.md
+      run: |
+        set -uo pipefail
+        PY=python3
+        command -v python3 >/dev/null 2>&1 || PY=python
+        [ -f "$GUARD_COMMENT_PATH" ] || exit 0
+        "$PY" -m guard.post "$GUARD_COMMENT_PATH"
+
+    - id: gate
+      shell: bash
+      env:
+        FAIL_ON: ${{ inputs.fail-on }}
+        CRITICAL: ${{ steps.scan.outputs.critical }}
+        HIGH: ${{ steps.scan.outputs.high }}
+        MEDIUM: ${{ steps.scan.outputs.medium }}
+      run: |
+        set -uo pipefail
+        case "${FAIL_ON:-critical}" in
+          none)     exit 0 ;;
+          critical) [ "${CRITICAL:-0}" = "0" ] && exit 0 || exit 1 ;;
+          high)     { [ "${CRITICAL:-0}" = "0" ] && [ "${HIGH:-0}" = "0" ]; } && exit 0 || exit 1 ;;
+          medium)   { [ "${CRITICAL:-0}" = "0" ] && [ "${HIGH:-0}" = "0" ] && [ "${MEDIUM:-0}" = "0" ]; } && exit 0 || exit 1 ;;
+          *)        echo "unknown fail-on: ${FAIL_ON}" >&2; exit 2 ;;
+        esac

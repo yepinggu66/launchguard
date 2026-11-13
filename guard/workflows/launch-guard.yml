@@ -1,0 +1,43 @@
+# Copy into .github/workflows/launch-guard.yml
+#
+# Two deliberate choices:
+#   * pull_request (not pull_request_target): the checked-out code is untrusted,
+#     so it must never get a write token until it has run.
+#   * fail-on: critical, not high, for the first month. A new bot that turns
+#     every PR red on day one gets switched off, and a switched-off bot never
+#     finds the real thing.
+name: Launch guard
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: launch-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: yepinggu66/agentproof-cloud/guard@main
+        id: guard
+        with:
+          path: "."
+          fail-on: critical
+          comment: "true"
+          badge-path: agentproof-guard.svg
+
+      - name: Upload the badge
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: launch-guard-badge
+          path: agentproof-guard.svg
+          if-no-files-found: ignore
